@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import * as alertsModule from "./alerts";
 
 // 获取最新的海洋要素数据
 export const getLatest = query({
@@ -61,10 +62,6 @@ export const getByTimeRange = query({
     const { startTime, endTime, deviceId } = args;
 
     try {
-      console.log(
-        `Getting data from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`
-      );
-
       let dataQuery = ctx.db
         .query("oceanElements")
         .filter(
@@ -80,11 +77,8 @@ export const getByTimeRange = query({
       }
 
       const results = await dataQuery.collect();
-      console.log(`Found ${results.length} results`);
-
       return results;
     } catch (error) {
-      console.error("Error in getByTimeRange:", error);
       // 返回空数组而不是抛出错误，保证前端可以继续处理
       return [];
     }
@@ -109,6 +103,30 @@ export const add = mutation({
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    try {
+      // 查找设备记录
+      // 注意：oceanElements表中的deviceId是设备在devices表中的_id属性
+      const device = await ctx.db
+        .query("devices")
+        .filter((q) => q.eq(q.field("_id"), args.deviceId))
+        .first();
+
+      if (device) {
+        // 更新设备状态为在线
+        await ctx.db.patch(device._id, {
+          status: "online",
+          lastActive: Date.now(),
+        });
+
+        // 使用alertsModule解决设备相关的警报
+        await alertsModule.resolveAlertsByDevice(ctx, {
+          deviceId: args.deviceId,
+        });
+      }
+    } catch (error) {
+      // 记录错误但不中断数据添加流程
+    }
+
     const id = await ctx.db.insert("oceanElements", {
       ...args,
       status: "normal", // 默认状态为正常
