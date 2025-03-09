@@ -59,8 +59,12 @@ USER nextjs
 EXPOSE 3000
 
 ENV PORT=3000
+# Environment variables for Convex
+ENV NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL}
+ENV CONVEX_SELF_HOSTED_URL=${CONVEX_SELF_HOSTED_URL}
+ENV CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
 
 # server.js is created by next build from the standalone output
-# https://nextjs.org/docs/pages/api-reference/config/next-config-js/output
+# https://nextjs.org/docs/pages/api-reference/next-config-js/output
 ENV HOSTNAME="0.0.0.0"
 CMD ["node", "server.js"]
