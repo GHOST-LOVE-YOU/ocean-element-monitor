@@ -455,10 +455,7 @@ export default function OceanDataChart({
       {
         ...chartData.datasets[0],
         tension: 0.4,
-        fill: {
-          target: "origin",
-          above: `${config.backgroundColor}30`,
-        },
+        fill: false,
         borderWidth: 2,
       },
     ],
@@ -468,9 +465,6 @@ export default function OceanDataChart({
   const simpleChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    animation: {
-      duration: 500,
-    },
     scales: {
       x: {
         type: "category" as const,
@@ -492,14 +486,6 @@ export default function OceanDataChart({
     plugins: {
       legend: {
         display: false,
-      },
-      tooltip: {
-        backgroundColor: "rgba(255, 255, 255, 0.95)",
-        titleColor: "#333",
-        bodyColor: "#666",
-        borderColor: "rgba(0, 0, 0, 0.1)",
-        borderWidth: 1,
-        padding: 8,
       },
     },
   };
