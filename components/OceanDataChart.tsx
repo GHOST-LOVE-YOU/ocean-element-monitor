@@ -3,7 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useState, useEffect, useRef } from "react";
-import { Line } from "react-chartjs-2";
+import dynamic from "next/dynamic";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -20,16 +20,24 @@ import "chartjs-adapter-date-fns";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale
-);
+// 使用dynamic导入以避免SSR渲染问题
+const Line = dynamic(() => import("react-chartjs-2").then((mod) => mod.Line), {
+  ssr: false,
+});
+
+// 确保Chart.js组件只在客户端注册
+if (typeof window !== "undefined") {
+  ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend,
+    TimeScale
+  );
+}
 
 // 定义支持的数据类型
 export type OceanDataType = "temperature" | "salinity" | "dissolvedOxygen";

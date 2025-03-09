@@ -15,8 +15,6 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   output: "standalone",
-  reactStrictMode: false,
-  swcMinify: true,
 };
 
 export default nextConfig;
