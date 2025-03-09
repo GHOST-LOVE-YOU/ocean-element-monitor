@@ -38,7 +38,7 @@ export const updateDeviceStatus = internalMutation({
         const deviceIdStr = device._id.toString();
 
         // 创建设备离线警报
-        const alertId = await ctx.db.insert("alerts", {
+        await ctx.db.insert("alerts", {
           timestamp: now,
           parameterType: "device_status",
           deviceId: deviceIdStr, // 确保以字符串形式存储设备ID
@@ -48,10 +48,6 @@ export const updateDeviceStatus = internalMutation({
           severity: "high",
           message: `设备 ${device.name}(${deviceIdStr}) 已离线，最后活动时间: ${new Date(device.lastActive).toLocaleString()}`,
         });
-
-        console.log(
-          `设备 ${device.name} 已离线，创建了警报 ${alertId}，设备ID: ${deviceIdStr}`
-        );
       }
     }
   },
@@ -69,7 +65,6 @@ export const generateDeviceData = internalMutation({
     // 获取设备
     const device = await ctx.db.get(deviceId);
     if (!device) {
-      console.error(`设备 ${deviceId} 不存在`);
       return;
     }
 
@@ -98,10 +93,9 @@ export const generateDeviceData = internalMutation({
       // 如果设备之前为离线状态，现在恢复在线
       if (wasOffline) {
         const deviceIdStr = device._id.toString();
-        console.log(`设备 ${device.name} (${deviceIdStr}) 状态从离线变为在线`);
 
         // 创建设备恢复在线通知
-        const recoveryAlertId = await ctx.db.insert("alerts", {
+        await ctx.db.insert("alerts", {
           timestamp: now,
           parameterType: "device_status",
           deviceId: deviceIdStr,
@@ -112,23 +106,30 @@ export const generateDeviceData = internalMutation({
           message: `设备 ${device.name}(${deviceIdStr}) 已恢复在线`,
         });
 
-        console.log(`创建了恢复通知 ${recoveryAlertId}`);
-
-        // 使用resolveAlertsByDevice函数解决该设备的所有未处理警报
-        const result = await alertsModule.resolveAlertsByDevice(ctx, {
+        // 解决该设备的所有未处理警报
+        await alertsModule.resolveAlertsByDevice(ctx, {
           deviceId: deviceIdStr,
         });
-        console.log(result.message);
       }
 
-      // 安排下一次数据生成（递归调用）
-      await ctx.scheduler.runAfter(
-        SIMULATION_INTERVAL,
-        internal.scheduler.generateDeviceData,
-        { deviceId }
-      );
+      // 只有设备仍在模拟状态才安排下一次数据生成
+      if (device.isSimulating) {
+        await ctx.scheduler.runAfter(
+          SIMULATION_INTERVAL,
+          internal.scheduler.generateDeviceData,
+          { deviceId }
+        );
+      }
     } catch (error) {
-      console.error(`设备 ${device._id} 数据生成失败:`, error);
+      // 即使出错，也要尝试安排下一次运行，确保模拟不会意外停止
+      const deviceStatus = await ctx.db.get(deviceId);
+      if (deviceStatus?.isSimulating) {
+        await ctx.scheduler.runAfter(
+          SIMULATION_INTERVAL,
+          internal.scheduler.generateDeviceData,
+          { deviceId }
+        );
+      }
     }
   },
 });
@@ -143,6 +144,7 @@ export const startDeviceSimulation = mutation({
     }
 
     const wasOffline = device.status === "offline";
+    const wasAlreadySimulating = device.isSimulating;
 
     // 更新设备状态
     await ctx.db.patch(args.deviceId, {
@@ -153,16 +155,17 @@ export const startDeviceSimulation = mutation({
 
     // 如果设备之前为离线状态，现在变为在线，自动解决相关警报
     if (wasOffline) {
-      // 使用静态导入的resolveAlertsByDevice函数
       await alertsModule.resolveAlertsByDevice(ctx, {
         deviceId: args.deviceId,
       });
     }
 
-    // 立即安排第一次数据生成
-    await ctx.scheduler.runAfter(0, internal.scheduler.generateDeviceData, {
-      deviceId: args.deviceId,
-    });
+    // 只有设备之前不是模拟状态，才安排首次数据生成
+    if (!wasAlreadySimulating) {
+      await ctx.scheduler.runAfter(0, internal.scheduler.generateDeviceData, {
+        deviceId: args.deviceId,
+      });
+    }
 
     return { success: true };
   },
@@ -249,8 +252,8 @@ async function generateSensorData(device: Doc<"devices">, timestamp: number) {
     location: {
       latitude: device.location.latitude + (Math.random() - 0.5) * 0.001,
       longitude: device.location.longitude + (Math.random() - 0.5) * 0.001,
-      depth: device.location.depth ?? 5 + (Math.random() - 0.5) * 0.5,
+      depth: device.location.depth,
     },
-    status: "normal",
+    status: "normal", // 默认正常状态
   };
 }

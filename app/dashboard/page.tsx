@@ -112,11 +112,9 @@ export default function Dashboard() {
     return "neutral";
   };
 
-  // 当timeframe变化时，记录到控制台
+  // 当timeframe变化时更新时间范围
   useEffect(() => {
-    console.log(`时间范围已更改为: ${timeframe}`);
-    console.log(`开始时间: ${new Date(timeRange.startTime).toLocaleString()}`);
-    console.log(`结束时间: ${new Date(timeRange.endTime).toLocaleString()}`);
+    // 时间范围变化时的逻辑处理
   }, [timeframe, timeRange]);
 
   return (
@@ -215,12 +213,12 @@ export default function Dashboard() {
           className="hover:opacity-90 transition-opacity"
         >
           <div className="h-full p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
-            <h2 className="text-lg font-semibold mb-4 flex justify-between items-center">
+            <h2 className="text-lg font-semibold mb-2 flex justify-between items-center">
               海水温度
               <span className="text-blue-500 text-sm">查看详情 →</span>
             </h2>
             <TemperatureChart
-              height={220}
+              height={250}
               startTime={timeRange.startTime}
               endTime={timeRange.endTime}
             />
@@ -232,12 +230,12 @@ export default function Dashboard() {
           className="hover:opacity-90 transition-opacity"
         >
           <div className="h-full p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
-            <h2 className="text-lg font-semibold mb-4 flex justify-between items-center">
+            <h2 className="text-lg font-semibold mb-2 flex justify-between items-center">
               海水盐度
               <span className="text-blue-500 text-sm">查看详情 →</span>
             </h2>
             <SalinityChart
-              height={220}
+              height={250}
               startTime={timeRange.startTime}
               endTime={timeRange.endTime}
             />
@@ -249,12 +247,12 @@ export default function Dashboard() {
           className="hover:opacity-90 transition-opacity"
         >
           <div className="h-full p-4 border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
-            <h2 className="text-lg font-semibold mb-4 flex justify-between items-center">
+            <h2 className="text-lg font-semibold mb-2 flex justify-between items-center">
               溶解氧
               <span className="text-blue-500 text-sm">查看详情 →</span>
             </h2>
             <DissolvedOxygenChart
-              height={220}
+              height={250}
               startTime={timeRange.startTime}
               endTime={timeRange.endTime}
             />

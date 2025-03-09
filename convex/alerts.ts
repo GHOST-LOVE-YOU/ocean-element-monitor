@@ -20,6 +20,73 @@ export const getAll = query({
   },
 });
 
+// 添加新警报
+export const add = mutation({
+  args: {
+    timestamp: v.number(),
+    deviceId: v.string(),
+    alertType: v.string(), // 用于消息生成，但不存储
+    severity: v.string(), // 应为: "low", "medium", "high"
+    parameter: v.string(), // 将映射到parameterType
+    value: v.number(),
+    threshold: v.number(),
+    description: v.optional(v.string()),
+    location: v.object({
+      // 用于前端显示，但不存储
+      latitude: v.number(),
+      longitude: v.number(),
+      depth: v.optional(v.number()),
+    }),
+    status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const {
+      timestamp,
+      deviceId,
+      alertType,
+      severity,
+      parameter,
+      value,
+      threshold,
+      description = "",
+      status = "new", // 默认为 "new"（新建）
+    } = args;
+
+    // 标准化严重性
+    let normalizedSeverity = severity;
+    // 确保严重性值符合schema的预期
+    if (!["low", "medium", "high", "info"].includes(normalizedSeverity)) {
+      // 将前端的值映射到schema预期的值
+      if (normalizedSeverity === "warning") normalizedSeverity = "medium";
+      else if (normalizedSeverity === "critical") normalizedSeverity = "high";
+      else normalizedSeverity = "medium"; // 默认值
+    }
+
+    // 标准化状态
+    let normalizedStatus = status;
+    // 确保状态值符合schema的预期
+    if (!["new", "acknowledged", "resolved"].includes(normalizedStatus)) {
+      // 将前端的值映射到schema预期的值
+      if (normalizedStatus === "pending") normalizedStatus = "new";
+      else normalizedStatus = "new"; // 默认为新建
+    }
+
+    // 创建警报记录 - 只包含schema中定义的字段
+    const alertId = await ctx.db.insert("alerts", {
+      timestamp,
+      parameterType: parameter, // 映射parameter到parameterType
+      deviceId,
+      value,
+      threshold,
+      status: normalizedStatus,
+      severity: normalizedSeverity,
+      message: description || `${parameter}异常: ${value} (阈值: ${threshold})`,
+    });
+
+    return alertId;
+  },
+});
+
 // 更新警报状态
 export const updateStatus = mutation({
   args: {

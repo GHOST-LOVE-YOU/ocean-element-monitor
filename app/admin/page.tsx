@@ -7,8 +7,19 @@ import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 
 export default function AdminPage() {
+  // 历史数据生成状态
+  const [selectedDevice, setSelectedDevice] = useState<string>("");
+  const [days, setDays] = useState<number>(7);
+  const [dataPointsPerDay, setDataPointsPerDay] = useState<number>(48);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationResult, setGenerationResult] = useState<string>("");
+  const [initialized, setInitialized] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   // 获取系统统计数据
-  const devices = useQuery(api.devices.getAll) || [];
+  const devices =
+    useQuery(api.devices.getAll, {}, { refreshKey: String(refreshKey) }) || [];
   const alerts = useQuery(api.alerts.getAll, { status: "new" }) || [];
   const latestData = useQuery(api.oceanElements.getLatest, { limit: 1 });
 
@@ -17,19 +28,16 @@ export default function AdminPage() {
   const stopSimulation = useMutation(api.scheduler.stopDeviceSimulation);
   const initScheduler = useMutation(api.scheduler.initScheduler);
 
-  // 历史数据生成状态
-  const [selectedDevice, setSelectedDevice] = useState<string>("");
-  const [days, setDays] = useState<number>(7);
-  const [dataPointsPerDay, setDataPointsPerDay] = useState<number>(48);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationResult, setGenerationResult] = useState<string>("");
-
   // 初始化定时任务
   useEffect(() => {
-    // 页面加载时初始化设备状态检查定时任务
+    // 初始化定时任务
     initScheduler()
-      .then(() => console.log("设备状态检查定时任务已初始化"))
-      .catch((error) => console.error("初始化定时任务失败:", error));
+      .then(() => {
+        setInitialized(true);
+      })
+      .catch((error) => {
+        setError("初始化定时任务失败");
+      });
   }, [initScheduler]);
 
   // 计算系统状态
@@ -45,18 +53,19 @@ export default function AdminPage() {
   };
 
   // 切换设备模拟状态
-  const toggleDeviceSimulation = async (deviceId: Id<"devices">) => {
-    const device = devices.find((d) => d._id === deviceId);
-    if (!device) return;
-
+  const toggleSimulation = async (
+    deviceId: Id<"devices">,
+    isSimulating: boolean
+  ) => {
     try {
-      if (device.isSimulating) {
+      if (isSimulating) {
         await stopSimulation({ deviceId });
       } else {
         await startSimulation({ deviceId });
       }
-    } catch (error: any) {
-      console.error("模拟状态切换失败:", error);
+      setRefreshKey(Date.now()); // 触发设备列表刷新
+    } catch (error) {
+      setError("模拟状态切换失败");
     }
   };
 
@@ -232,7 +241,12 @@ export default function AdminPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
-                        onClick={() => toggleDeviceSimulation(device._id)}
+                        onClick={() =>
+                          toggleSimulation(
+                            device._id,
+                            device.isSimulating ?? false
+                          )
+                        }
                         className={`px-3 py-1 rounded ${
                           device.isSimulating
                             ? "bg-red-500 hover:bg-red-600 text-white"

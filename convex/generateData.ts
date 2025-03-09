@@ -29,41 +29,176 @@ export const generateSingleDataPoint = mutation({
     const timestamp = args.timestamp || Date.now();
     const location = args.location || device.location;
 
+    // 获取设备之前的历史数据，用于更真实的趋势生成
+    const previousData = await ctx.db
+      .query("oceanElements")
+      .filter((q) => q.eq(q.field("deviceId"), args.deviceId))
+      .order("desc")
+      .take(5);
+
     // 生成基于真实海洋环境的模拟数据
     const hour = new Date(timestamp).getHours();
+    const month = new Date(timestamp).getMonth(); // 0-11，用于季节性变化
     const dayOfYear = Math.floor(
       (timestamp - new Date(new Date().getFullYear(), 0, 0).getTime()) /
         (1000 * 60 * 60 * 24)
     );
 
-    // 温度: 季节变化 + 日变化 + 随机波动
-    const temperature = 15 + 
-      8 * Math.sin((dayOfYear / 365) * 2 * Math.PI - Math.PI / 2) + 
-      1.5 * Math.sin((hour / 24) * 2 * Math.PI - Math.PI / 2) + 
-      (Math.random() - 0.5) * 0.8;
+    // 根据纬度确定基础温度范围，纬度越高温度越低
+    const latitudeFactor = Math.max(0, (90 - Math.abs(location.latitude)) / 90); // 0-1，赤道接近1，极地接近0
 
-    // 盐度: 基于纬度的变化 + 小随机波动
-    const salinity = 35 - 
-      0.1 * (location.latitude - 45) + 
-      (Math.random() - 0.5) * 0.6;
+    // 基础温度: 受纬度影响的基础温度 (0°C - 30°C)
+    const baseTemperature = 5 + 25 * latitudeFactor;
 
-    // 流速: 小时变化 + 随机波动
-    const flowRate = 0.3 + 
-      0.2 * Math.sin((hour / 12) * 2 * Math.PI) + 
-      Math.random() * 0.2;
+    // 季节性温度变化: 北半球和南半球季节相反
+    const isNorthernHemisphere = location.latitude >= 0;
+    const seasonalOffset = isNorthernHemisphere
+      ? Math.sin((dayOfYear / 365) * 2 * Math.PI) // 北半球：夏季较暖
+      : Math.sin((dayOfYear / 365) * 2 * Math.PI + Math.PI); // 南半球：季节相反
 
-    // 溶解氧: 温度反相关 + 随机波动
-    const dissolvedOxygen = 8 - 
-      0.1 * (temperature - 15) + 
-      (Math.random() - 0.5) * 0.6;
+    // 季节变化幅度随纬度增大，赤道附近季节变化小，极地季节变化大
+    const seasonalAmplitude = 2 + 8 * (1 - latitudeFactor);
 
-    // pH: 小波动
-    const pH = 8.1 + (Math.random() - 0.5) * 0.3;
+    // 日变化: 白天较暖，夜间较冷
+    const diurnalOffset = Math.sin((hour / 24) * 2 * Math.PI - Math.PI / 2);
 
-    // 浊度: 流速相关 + 随机波动
-    const turbidity = 2 + 
-      flowRate * 0.5 + 
-      Math.random() * 1.5;
+    // 连续性变化：如果有历史数据，让新数据连续变化
+    let continuityFactor = 0;
+    if (previousData.length > 0 && previousData[0].temperature) {
+      // 添加一个趋势连续性因子，基于最近数据点的温度
+      const prevTemp = previousData[0].temperature;
+      // 当前计算的温度与前一个温度的差异，使变化更平滑
+      const tempDiff =
+        baseTemperature + seasonalOffset * seasonalAmplitude - prevTemp;
+      continuityFactor = -tempDiff * 0.7; // 减少70%的差异，使变化更平滑
+    }
+
+    // 随机波动：海洋温度变化通常较小
+    const randomFactor = (Math.random() - 0.5) * 0.3;
+
+    // 最终温度计算
+    const temperature =
+      baseTemperature +
+      seasonalOffset * seasonalAmplitude +
+      diurnalOffset * 1.2 +
+      randomFactor +
+      continuityFactor;
+
+    // 盐度计算：考虑纬度、深度和季节性变化
+    // 全球海水盐度范围通常为33-37 PSU
+
+    // 基础盐度：与纬度有关，中纬度区域盐度较高
+    const latitudeForSalinity = Math.abs(location.latitude);
+    let baseSalinity;
+    if (latitudeForSalinity < 30) {
+      // 低纬度地区，热带
+      baseSalinity = 34.5; // 赤道附近盐度适中
+    } else if (latitudeForSalinity < 60) {
+      // 中纬度地区
+      baseSalinity = 35.5; // 中纬度盐度较高
+    } else {
+      // 高纬度地区
+      baseSalinity = 33.5; // 极地区域盐度较低
+    }
+
+    // 季节性影响：雨季盐度降低，旱季盐度升高
+    // 简化模型：夏季降雨多，盐度略低
+    const seasonalSalinityOffset = isNorthernHemisphere
+      ? -0.3 * Math.sin((dayOfYear / 365) * 2 * Math.PI) // 北半球夏季盐度略低
+      : -0.3 * Math.sin((dayOfYear / 365) * 2 * Math.PI + Math.PI); // 南半球相反
+
+    // 深度影响：深水区域盐度略高
+    const depthFactor = location.depth
+      ? Math.min(1, location.depth / 100) * 0.5
+      : 0;
+
+    // 连续性变化
+    let salinityContinuityFactor = 0;
+    if (previousData.length > 0 && previousData[0].salinity) {
+      const prevSalinity = previousData[0].salinity;
+      const salinityDiff =
+        baseSalinity + seasonalSalinityOffset + depthFactor - prevSalinity;
+      salinityContinuityFactor = -salinityDiff * 0.8; // 减少80%的差异
+    }
+
+    // 随机变化：海水盐度变化通常很小
+    const salinityRandom = (Math.random() - 0.5) * 0.2;
+
+    // 最终盐度计算
+    const salinity =
+      baseSalinity +
+      seasonalSalinityOffset +
+      depthFactor +
+      salinityRandom +
+      salinityContinuityFactor;
+
+    // 流速计算：考虑潮汐和日周期
+    // 基础流速
+    const baseFlowRate = 0.2;
+
+    // 潮汐影响：每天两次高潮低潮
+    const tidalFactor = 0.3 * Math.sin((hour / 12) * 2 * Math.PI);
+
+    // 随机波动
+    const flowRateRandom = Math.random() * 0.15;
+
+    // 最终流速计算
+    const flowRate = baseFlowRate + tidalFactor + flowRateRandom;
+
+    // 溶解氧计算：受温度、盐度影响
+    // 海水中溶解氧通常在4-10 mg/L之间，温度越高，溶解氧越低
+
+    // 温度对溶解氧的影响：温度升高，溶解氧降低
+    const tempOxygenFactor = -0.2 * (temperature - 15); // 15℃为基准
+
+    // 盐度对溶解氧的影响：盐度升高，溶解氧降低
+    const salinityOxygenFactor = -0.05 * (salinity - 35); // 35 PSU为基准
+
+    // 连续性变化
+    let oxygenContinuityFactor = 0;
+    if (previousData.length > 0 && previousData[0].dissolvedOxygen) {
+      const prevOxygen = previousData[0].dissolvedOxygen;
+      const oxygenDiff =
+        7.5 + tempOxygenFactor + salinityOxygenFactor - prevOxygen;
+      oxygenContinuityFactor = -oxygenDiff * 0.75; // 减少75%的差异
+    }
+
+    // 随机变化
+    const oxygenRandom = (Math.random() - 0.5) * 0.3;
+
+    // 最终溶解氧计算
+    const dissolvedOxygen =
+      7.5 +
+      tempOxygenFactor +
+      salinityOxygenFactor +
+      oxygenRandom +
+      oxygenContinuityFactor;
+
+    // pH值：通常海水pH在7.8-8.3之间，受多种因素影响
+    // 基础pH值：全球海水平均约8.1
+    const basePH = 8.1;
+
+    // 溶解氧对pH的影响：溶解氧增加，pH略微上升
+    const oxygenPHFactor = 0.05 * ((dissolvedOxygen - 7) / 5);
+
+    // 随机变化
+    const pHRandom = (Math.random() - 0.5) * 0.1;
+
+    // 最终pH计算
+    const pH = basePH + oxygenPHFactor + pHRandom;
+
+    // 浊度：受流速影响，流速大浊度高
+    // 基础浊度
+    const baseTurbidity = 1.5;
+
+    // 流速影响
+    const flowTurbidityFactor = flowRate * 1.2;
+
+    // 随机变化
+    const turbidityRandom = Math.random() * 0.8;
+
+    // 最终浊度计算
+    const turbidity = baseTurbidity + flowTurbidityFactor + turbidityRandom;
 
     // 创建数据点
     return await ctx.db.insert("oceanElements", {
