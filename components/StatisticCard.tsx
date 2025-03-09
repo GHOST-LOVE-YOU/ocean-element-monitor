@@ -7,7 +7,7 @@ import {
   DeviceTabletIcon,
   BellAlertIcon,
   CircleStackIcon,
-} from "@heroicons/react/24/outline"; // Removed ThermometerIcon as it is not exported
+} from "@heroicons/react/24/outline";
 
 type StatisticCardProps = {
   title: string;

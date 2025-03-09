@@ -3,41 +3,18 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useState, useEffect, useRef } from "react";
-import dynamic from "next/dynamic";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale,
-  TooltipItem,
-} from "chart.js";
-import "chartjs-adapter-date-fns";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
-
-// 使用dynamic导入以避免SSR渲染问题
-const Line = dynamic(() => import("react-chartjs-2").then((mod) => mod.Line), {
-  ssr: false,
-});
-
-// 确保Chart.js组件只在客户端注册
-if (typeof window !== "undefined") {
-  ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    TimeScale
-  );
-}
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+} from "recharts";
 
 // 定义支持的数据类型
 export type OceanDataType = "temperature" | "salinity" | "dissolvedOxygen";
@@ -89,22 +66,22 @@ interface OceanDataChartProps {
   endTime?: number;
 }
 
-interface ChartDataType {
-  labels: string[];
-  datasets: {
-    label: string;
-    data: (number | null)[];
-    borderColor: string;
-    backgroundColor: string;
-    tension: number;
-    pointRadius: number;
-    pointHoverRadius: number;
-    borderWidth: number;
-    fill: {
-      target: string;
-      above: string;
-    };
-  }[];
+// 定义图表数据格式
+interface ChartDataPoint {
+  timestamp: string;
+  value: number | null;
+  formattedTime?: string;
+}
+
+// 自定义 Tooltip 的 Props 类型
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value: number | null;
+    dataKey: string;
+    name: string;
+  }>;
+  label?: string;
 }
 
 export default function OceanDataChart({
@@ -177,106 +154,52 @@ export default function OceanDataChart({
   const timeRangeInDays = (endTime - startTime) / (24 * 60 * 60 * 1000);
 
   // 格式化时间标签，根据时间范围自动调整格式
-  const formatTimeLabel = (timestamp: string): string => {
-    const date = new Date(timestamp);
+  const formatTimeLabel = (timestamp: string) => {
+    if (!timestamp) return "";
 
-    // 根据显示的数据范围选择合适的时间格式
-    if (timeRangeInDays <= 1) {
-      return format(date, "HH:mm", { locale: zhCN });
-    } else if (timeRangeInDays <= 7) {
-      return format(date, "MM-dd HH:mm", { locale: zhCN });
-    } else {
-      return format(date, "MM-dd", { locale: zhCN });
+    try {
+      const date = new Date(timestamp);
+
+      // 根据显示的数据范围选择合适的时间格式
+      if (timeRangeInDays <= 1) {
+        return format(date, "HH:mm", { locale: zhCN });
+      } else if (timeRangeInDays <= 7) {
+        return format(date, "MM-dd HH:mm", { locale: zhCN });
+      } else {
+        return format(date, "MM-dd", { locale: zhCN });
+      }
+    } catch (error) {
+      console.error("Error formatting time:", error);
+      return "";
     }
   };
 
-  // 准备图表数据
-  const chartData: ChartDataType = {
-    labels: processedData?.labels || [],
-    datasets: [
-      {
-        label: `${config.label} (${config.unit})`,
-        data: processedData?.data || [],
-        borderColor: config.color,
-        backgroundColor: config.backgroundColor,
-        tension: 0.6,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        borderWidth: 2.5,
-        fill: {
-          target: "origin",
-          above: `${config.backgroundColor}25`, // 25% opacity
-        },
-      },
-    ],
-  };
+  // 准备 Recharts 数据格式
+  const chartData: ChartDataPoint[] = processedData
+    ? processedData.labels.map((label, index) => ({
+        timestamp: label,
+        value: processedData.data[index],
+        formattedTime: formatTimeLabel(label),
+      }))
+    : [];
 
-  // 图表配置
-  const options: any = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: "index" as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        callbacks: {
-          title: (tooltipItems: TooltipItem<"line">[]) => {
-            if (tooltipItems.length === 0) return "";
-            const index = tooltipItems[0].dataIndex;
-            const label = processedData?.labels[index];
-            return label ? formatTimeLabel(label) : "";
-          },
-          label: (context: TooltipItem<"line">) => {
-            const value = context.parsed.y;
-            if (value === null || value === undefined) return "无数据";
-            return `${config.label}: ${value.toFixed(2)} ${config.unit}`;
-          },
-        },
-      },
-    },
-    scales: {
-      x: {
-        type: "time" as const,
-        time: {
-          unit: timeRangeInDays <= 1 ? ("hour" as const) : ("day" as const),
-          displayFormats: {
-            hour: "HH:mm",
-            day: "MM-dd",
-          },
-        },
-        adapters: {
-          date: {
-            locale: zhCN,
-          },
-        },
-        title: {
-          display: false,
-        },
-        grid: {
-          display: false,
-        },
-      },
-      y: {
-        min: config.yAxisMin,
-        max: config.yAxisMax,
-        title: {
-          display: false,
-        },
-        grid: {
-          color: "rgba(0, 0, 0, 0.05)",
-        },
-        ticks: {
-          callback: function (tickValue: string | number) {
-            return `${tickValue} ${config.unit}`;
-          },
-        },
-      },
-    },
+  // 自定义 Tooltip 内容
+  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+    if (active && payload && payload.length) {
+      const value = payload[0].value;
+      return (
+        <div className="bg-white p-2 border border-gray-200 shadow-sm rounded text-sm">
+          <p className="font-medium text-gray-700">
+            {label && formatTimeLabel(label)}
+          </p>
+          <p className="text-gray-600">
+            {config.label}:{" "}
+            {value !== null ? `${value.toFixed(2)} ${config.unit}` : "无数据"}
+          </p>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -285,12 +208,68 @@ export default function OceanDataChart({
         <div className="flex items-center justify-center h-full">
           <div className="animate-pulse text-gray-400">加载中...</div>
         </div>
-      ) : processedData.data.length === 0 ? (
+      ) : chartData.length === 0 ? (
         <div className="flex items-center justify-center h-full">
           <div className="text-gray-400">暂无数据</div>
         </div>
       ) : (
-        <Line data={chartData} options={options} />
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={chartData}
+            margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
+            <XAxis
+              dataKey="timestamp"
+              tickFormatter={formatTimeLabel}
+              stroke="#888"
+              fontSize={10}
+              tickMargin={8}
+            />
+            <YAxis
+              domain={[
+                config.yAxisMin !== undefined ? config.yAxisMin : "auto",
+                config.yAxisMax !== undefined ? config.yAxisMax : "auto",
+              ]}
+              tickFormatter={(value) => `${value}${config.unit}`}
+              stroke="#888"
+              fontSize={10}
+              width={40}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <defs>
+              <linearGradient
+                id={`gradient-${dataType}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop offset="5%" stopColor={config.color} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={config.color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={config.color}
+              strokeWidth={2}
+              fillOpacity={1}
+              fill={`url(#gradient-${dataType})`}
+              activeDot={{ r: 6, strokeWidth: 0 }}
+              connectNulls
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke={config.color}
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 6, strokeWidth: 0 }}
+              connectNulls
+            />
+          </LineChart>
+        </ResponsiveContainer>
       )}
     </div>
   );
