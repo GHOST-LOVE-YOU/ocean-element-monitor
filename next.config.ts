@@ -15,17 +15,6 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   output: "standalone",
-  webpack: (config) => {
-    // 这个配置确保chart.js在服务器端构建时不会出错
-    if (!config.resolve) {
-      config.resolve = {};
-    }
-    if (!config.resolve.fallback) {
-      config.resolve.fallback = {};
-    }
-    config.resolve.fallback.canvas = false;
-    return config;
-  },
 };
 
 export default nextConfig;
