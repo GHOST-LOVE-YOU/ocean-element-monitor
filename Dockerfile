@@ -6,6 +6,8 @@ FROM node:18-alpine AS base
 FROM base AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
+# 添加 Canvas 依赖项
+RUN apk add --no-cache build-base cairo-dev pango-dev jpeg-dev giflib-dev
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager

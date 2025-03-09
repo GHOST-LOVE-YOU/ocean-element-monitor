@@ -15,6 +15,16 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   output: "standalone",
+  // 添加webpack配置来处理Chart.js
+  webpack: (config) => {
+    // 这个配置告诉Webpack不要尝试在服务器端解析这些模块
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      canvas: false,
+    };
+
+    return config;
+  },
 };
 
 export default nextConfig;
