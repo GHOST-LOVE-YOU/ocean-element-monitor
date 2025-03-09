@@ -16,14 +16,17 @@ const GenericOceanChart = dynamic(
   { ssr: false }
 );
 
-// 定义统计数据类型
-interface StatisticsResult {
-  count: number;
-  average: number;
-  minimum: number;
-  maximum: number;
-  standardDeviation: number;
-  trend: string;
+// 定义处理后的图表数据类型
+interface ProcessedChartData {
+  labels: string[];
+  data: (number | null)[];
+  statistics: {
+    count: number;
+    average: number | null;
+    minimum: number | null;
+    maximum: number | null;
+    standardDeviation: number | null;
+  };
 }
 
 export default function Dashboard() {
@@ -66,10 +69,11 @@ export default function Dashboard() {
   }, [alerts, timeRange.startTime]);
 
   // 获取与详情页面一致的温度统计数据
-  const temperatureStats = useQuery(api.analysis.getStatistics, {
-    parameter: "temperature",
-    timeRange: { start: timeRange.startTime, end: timeRange.endTime },
-  }) as StatisticsResult | undefined;
+  const temperatureStats = useQuery(api.oceanElements.getProcessedChartData, {
+    dataType: "temperature",
+    startTime: timeRange.startTime,
+    endTime: timeRange.endTime,
+  }) as ProcessedChartData | undefined;
 
   // 获取与详情页面一致的数据点数量
   const allData = useQuery(api.oceanElements.getByTimeRange, {
@@ -97,11 +101,12 @@ export default function Dashboard() {
 
   // 计算温度变化
   const calculateTempChange = (): string => {
-    if (!temperatureStats || !temperatureStats.average) return "+0.0°C";
+    if (!temperatureStats || !temperatureStats.statistics.average)
+      return "+0.0°C";
 
     // 使用标准差作为变化指标
-    const change = temperatureStats.standardDeviation
-      ? temperatureStats.standardDeviation / 10
+    const change = temperatureStats.statistics.standardDeviation
+      ? temperatureStats.statistics.standardDeviation / 10
       : 0;
     return `±${change.toFixed(1)}°C`;
   };
@@ -177,8 +182,8 @@ export default function Dashboard() {
           <StatisticCard
             title="平均水温"
             value={
-              temperatureStats?.average
-                ? formatTemperature(temperatureStats.average)
+              temperatureStats?.statistics.average
+                ? formatTemperature(temperatureStats.statistics.average)
                 : "加载中..."
             }
             change={calculateTempChange()}

@@ -657,3 +657,134 @@ export const exportData = query({
     }
   },
 });
+
+// 新增：获取已处理的图表数据(用于仪表板)
+export const getProcessedChartData = query({
+  args: {
+    dataType: v.string(),
+    startTime: v.number(),
+    endTime: v.number(),
+    maxDataPoints: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { dataType, startTime, endTime, maxDataPoints = 100 } = args;
+
+    try {
+      // 获取指定时间范围内的数据
+      const rawData = await ctx.db
+        .query("oceanElements")
+        .filter(
+          (q) =>
+            q.gte(q.field("timestamp"), startTime) &&
+            q.lte(q.field("timestamp"), endTime)
+        )
+        .collect();
+
+      // 确保数据在指定的时间范围内
+      const filteredData = rawData.filter(
+        (item) => item.timestamp >= startTime && item.timestamp <= endTime
+      );
+
+      // 如果数据为空，返回占位数据
+      if (filteredData.length === 0) {
+        return {
+          labels: [
+            new Date(startTime).toISOString(),
+            new Date(endTime).toISOString(),
+          ],
+          data: [null, null],
+          statistics: {
+            count: 0,
+            average: null,
+            minimum: null,
+            maximum: null,
+            standardDeviation: null,
+          },
+        };
+      }
+
+      // 按时间排序
+      const sortedData = [...filteredData].sort(
+        (a, b) => a.timestamp - b.timestamp
+      );
+
+      // 数据采样 - 如果数据点太多，进行降采样
+      let sampledData = sortedData;
+      if (sortedData.length > maxDataPoints) {
+        const samplingInterval = Math.ceil(sortedData.length / maxDataPoints);
+        sampledData = sortedData.filter(
+          (_, index) => index % samplingInterval === 0
+        );
+
+        // 确保包含最后一个数据点
+        if (
+          sampledData[sampledData.length - 1] !==
+          sortedData[sortedData.length - 1]
+        ) {
+          sampledData.push(sortedData[sortedData.length - 1]);
+        }
+      }
+
+      // 提取数据点
+      const labels = sampledData.map((item) =>
+        new Date(item.timestamp).toISOString()
+      );
+      const data = sampledData.map((item) =>
+        item[dataType] !== undefined ? item[dataType] : null
+      );
+
+      // 计算统计数据
+      const validValues = sortedData
+        .map((item) => item[dataType])
+        .filter((value) => value !== undefined && value !== null);
+
+      let statistics = {
+        count: validValues.length,
+        average: null,
+        minimum: null,
+        maximum: null,
+        standardDeviation: null,
+      };
+
+      if (validValues.length > 0) {
+        const sum = validValues.reduce((acc, val) => acc + val, 0);
+        const avg = sum / validValues.length;
+        const min = Math.min(...validValues);
+        const max = Math.max(...validValues);
+
+        // 计算标准差
+        const variance =
+          validValues.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) /
+          validValues.length;
+        const stdDev = Math.sqrt(variance);
+
+        statistics = {
+          count: validValues.length,
+          average: avg,
+          minimum: min,
+          maximum: max,
+          standardDeviation: stdDev,
+        };
+      }
+
+      return {
+        labels,
+        data,
+        statistics,
+      };
+    } catch (error) {
+      // 返回空数据结构而不是抛出错误
+      return {
+        labels: [],
+        data: [],
+        statistics: {
+          count: 0,
+          average: null,
+          minimum: null,
+          maximum: null,
+          standardDeviation: null,
+        },
+      };
+    }
+  },
+});
