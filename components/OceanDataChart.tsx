@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useState, useEffect, useRef } from "react";
+import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -18,24 +19,17 @@ import {
 import "chartjs-adapter-date-fns";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import ClientSideChart from "./ClientSideChart";
 
-// 客户端环境检查
-const isClient = typeof window !== "undefined";
-
-// 只在客户端注册Chart.js组件
-if (isClient) {
-  ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    TimeScale
-  );
-}
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  TimeScale
+);
 
 // 定义支持的数据类型
 export type OceanDataType = "temperature" | "salinity" | "dissolvedOxygen";
@@ -129,13 +123,6 @@ export default function OceanDataChart({
 
   // 追踪是否是首次加载
   const [isFirstLoad, setIsFirstLoad] = useState(true);
-
-  // 添加客户端渲染状态
-  const [isClientReady, setIsClientReady] = useState(false);
-
-  useEffect(() => {
-    setIsClientReady(true);
-  }, []);
 
   // 当时间范围或数据类型变化时更新数据获取key
   useEffect(() => {
@@ -504,18 +491,11 @@ export default function OceanDataChart({
   };
 
   return (
-    <div className="ocean-data-chart" style={{ height: `${height}px` }}>
-      {!data || data.length === 0 ? (
-        <div className="flex items-center justify-center h-full text-gray-500">
-          <p>无数据可显示</p>
-        </div>
-      ) : (
-        <ClientSideChart
-          data={simpleChartData}
-          options={simpleChartOptions}
-          height={height}
-        />
-      )}
+    <div
+      style={{ height: `${height}px` }}
+      className="bg-gradient-to-b from-white to-gray-50 rounded-lg p-2"
+    >
+      <Line data={simpleChartData} options={simpleChartOptions} />
     </div>
   );
 }

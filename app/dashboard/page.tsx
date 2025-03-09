@@ -3,14 +3,25 @@
 import Link from "next/link";
 import TimeframeSelector from "@/components/TimeframeSelector";
 import StatisticCard from "@/components/StatisticCard";
-import SalinityChart from "@/components/SalinityChart";
-import DissolvedOxygenChart from "@/components/DissolvedOxygenChart";
 import OceanMap from "@/components/OceanMap";
 import AlertList from "@/components/AlertList";
-import TemperatureChart from "@/components/TemperatureChart";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense, lazy } from "react";
+
+// 使用动态导入加载图表组件
+const TemperatureChart = lazy(() => import("@/components/TemperatureChart"));
+const SalinityChart = lazy(() => import("@/components/SalinityChart"));
+const DissolvedOxygenChart = lazy(
+  () => import("@/components/DissolvedOxygenChart")
+);
+
+// 创建图表占位符组件
+const ChartPlaceholder = () => (
+  <div className="animate-pulse flex flex-col h-[250px] w-full">
+    <div className="h-full w-full bg-gray-200 rounded"></div>
+  </div>
+);
 
 // 定义统计数据类型
 interface StatisticsResult {
@@ -21,6 +32,21 @@ interface StatisticsResult {
   standardDeviation: number;
   trend: string;
 }
+
+// 创建客户端图表包装组件
+const ClientSideChart = ({ children }: { children: React.ReactNode }) => {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) {
+    return <ChartPlaceholder />;
+  }
+
+  return <>{children}</>;
+};
 
 export default function Dashboard() {
   // 设置时间范围状态
@@ -217,11 +243,15 @@ export default function Dashboard() {
               海水温度
               <span className="text-blue-500 text-sm">查看详情 →</span>
             </h2>
-            <TemperatureChart
-              height={250}
-              startTime={timeRange.startTime}
-              endTime={timeRange.endTime}
-            />
+            <ClientSideChart>
+              <Suspense fallback={<ChartPlaceholder />}>
+                <TemperatureChart
+                  height={250}
+                  startTime={timeRange.startTime}
+                  endTime={timeRange.endTime}
+                />
+              </Suspense>
+            </ClientSideChart>
           </div>
         </Link>
 
@@ -234,11 +264,15 @@ export default function Dashboard() {
               海水盐度
               <span className="text-blue-500 text-sm">查看详情 →</span>
             </h2>
-            <SalinityChart
-              height={250}
-              startTime={timeRange.startTime}
-              endTime={timeRange.endTime}
-            />
+            <ClientSideChart>
+              <Suspense fallback={<ChartPlaceholder />}>
+                <SalinityChart
+                  height={250}
+                  startTime={timeRange.startTime}
+                  endTime={timeRange.endTime}
+                />
+              </Suspense>
+            </ClientSideChart>
           </div>
         </Link>
 
@@ -251,11 +285,15 @@ export default function Dashboard() {
               溶解氧
               <span className="text-blue-500 text-sm">查看详情 →</span>
             </h2>
-            <DissolvedOxygenChart
-              height={250}
-              startTime={timeRange.startTime}
-              endTime={timeRange.endTime}
-            />
+            <ClientSideChart>
+              <Suspense fallback={<ChartPlaceholder />}>
+                <DissolvedOxygenChart
+                  height={250}
+                  startTime={timeRange.startTime}
+                  endTime={timeRange.endTime}
+                />
+              </Suspense>
+            </ClientSideChart>
           </div>
         </Link>
       </div>
