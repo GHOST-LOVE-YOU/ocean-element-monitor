@@ -14,42 +14,42 @@ export const getLatest = query({
 });
 
 // 按位置获取数据
-export const getByLocation = query({
-  args: {
-    latitude: v.number(),
-    longitude: v.number(),
-    radius: v.optional(v.number()), // 半径，单位km
-  },
-  handler: async (ctx, args) => {
-    const { latitude, longitude, radius = 10 } = args;
+// export const getByLocation = query({
+//   args: {
+//     latitude: v.number(),
+//     longitude: v.number(),
+//     radius: v.optional(v.number()), // 半径，单位km
+//   },
+//   handler: async (ctx, args) => {
+//     const { latitude, longitude, radius = 10 } = args;
 
-    // 简化实现：实际应用中应使用地理空间计算
-    const data = await ctx.db.query("oceanElements").collect();
+//     // 简化实现：实际应用中应使用地理空间计算
+//     const data = await ctx.db.query("oceanElements").collect();
 
-    // 使用Haversine公式计算距离
-    return data.filter((item) => {
-      const lat1 = (latitude * Math.PI) / 180;
-      const lon1 = (longitude * Math.PI) / 180;
-      const lat2 = (item.location.latitude * Math.PI) / 180;
-      const lon2 = (item.location.longitude * Math.PI) / 180;
+//     // 使用Haversine公式计算距离
+//     return data.filter((item) => {
+//       const lat1 = (latitude * Math.PI) / 180;
+//       const lon1 = (longitude * Math.PI) / 180;
+//       const lat2 = (item.location.latitude * Math.PI) / 180;
+//       const lon2 = (item.location.longitude * Math.PI) / 180;
 
-      const R = 6371; // 地球半径，单位km
-      const dLat = lat2 - lat1;
-      const dLon = lon2 - lon1;
+//       const R = 6371; // 地球半径，单位km
+//       const dLat = lat2 - lat1;
+//       const dLon = lon2 - lon1;
 
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1) *
-          Math.cos(lat2) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distance = R * c;
+//       const a =
+//         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+//         Math.cos(lat1) *
+//           Math.cos(lat2) *
+//           Math.sin(dLon / 2) *
+//           Math.sin(dLon / 2);
+//       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+//       const distance = R * c;
 
-      return distance <= radius;
-    });
-  },
-});
+//       return distance <= radius;
+//     });
+//   },
+// });
 
 // 按时间段获取数据
 export const getByTimeRange = query({
@@ -179,67 +179,67 @@ async function checkAndCreateAlerts(
 }
 
 // 新增：获取汇总统计数据(用于仪表板)
-export const getDashboardStats = query({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+// export const getDashboardStats = query({
+//   args: {},
+//   handler: async (ctx) => {
+//     const now = Date.now();
+//     const oneDayAgo = now - 24 * 60 * 60 * 1000;
 
-    // 获取最新的数据点
-    const latestData = await ctx.db
-      .query("oceanElements")
-      .order("desc")
-      .take(100);
+//     // 获取最新的数据点
+//     const latestData = await ctx.db
+//       .query("oceanElements")
+//       .order("desc")
+//       .take(100);
 
-    // 获取过去24小时内的数据点
-    const recentData = await ctx.db
-      .query("oceanElements")
-      .filter((q) => q.gte(q.field("timestamp"), oneDayAgo))
-      .collect();
+//     // 获取过去24小时内的数据点
+//     const recentData = await ctx.db
+//       .query("oceanElements")
+//       .filter((q) => q.gte(q.field("timestamp"), oneDayAgo))
+//       .collect();
 
-    // 计算每个参数的平均值
-    const params = [
-      "temperature",
-      "salinity",
-      "dissolvedOxygen",
-      "pH",
-      "flowRate",
-      "turbidity",
-    ];
-    const averages = {};
+//     // 计算每个参数的平均值
+//     const params = [
+//       "temperature",
+//       "salinity",
+//       "dissolvedOxygen",
+//       "pH",
+//       "flowRate",
+//       "turbidity",
+//     ];
+//     const averages = {};
 
-    params.forEach((param) => {
-      const validData = recentData
-        .filter((d) => d[param] !== undefined && d[param] !== null)
-        .map((d) => d[param]);
+//     params.forEach((param) => {
+//       const validData = recentData
+//         .filter((d) => d[param] !== undefined && d[param] !== null)
+//         .map((d) => d[param]);
 
-      if (validData.length > 0) {
-        averages[param] =
-          validData.reduce((sum, val) => sum + val, 0) / validData.length;
-      }
-    });
+//       if (validData.length > 0) {
+//         averages[param] =
+//           validData.reduce((sum, val) => sum + val, 0) / validData.length;
+//       }
+//     });
 
-    // 计算24小时内的数据点增长
-    const prevDayData = await ctx.db
-      .query("oceanElements")
-      .filter(
-        (q) =>
-          q.gte(q.field("timestamp"), oneDayAgo - 24 * 60 * 60 * 1000) &&
-          q.lt(q.field("timestamp"), oneDayAgo)
-      )
-      .collect();
+//     // 计算24小时内的数据点增长
+//     const prevDayData = await ctx.db
+//       .query("oceanElements")
+//       .filter(
+//         (q) =>
+//           q.gte(q.field("timestamp"), oneDayAgo - 24 * 60 * 60 * 1000) &&
+//           q.lt(q.field("timestamp"), oneDayAgo)
+//       )
+//       .collect();
 
-    const dataPointsGrowth = recentData.length - prevDayData.length;
+//     const dataPointsGrowth = recentData.length - prevDayData.length;
 
-    return {
-      totalDataPoints: latestData.length,
-      dataPointsLast24h: recentData.length,
-      dataPointsGrowth,
-      averages,
-      lastUpdated: latestData.length > 0 ? latestData[0].timestamp : null,
-    };
-  },
-});
+//     return {
+//       totalDataPoints: latestData.length,
+//       dataPointsLast24h: recentData.length,
+//       dataPointsGrowth,
+//       averages,
+//       lastUpdated: latestData.length > 0 ? latestData[0].timestamp : null,
+//     };
+//   },
+// });
 
 // 新增：获取参数趋势数据(按小时聚合)
 export const getHourlyTrends = query({
@@ -301,50 +301,50 @@ export const getHourlyTrends = query({
 });
 
 // 新增：按区域获取最新数据
-export const getLatestByRegion = query({
-  args: {
-    northLat: v.number(),
-    southLat: v.number(),
-    westLng: v.number(),
-    eastLng: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const { northLat, southLat, westLng, eastLng } = args;
+// export const getLatestByRegion = query({
+//   args: {
+//     northLat: v.number(),
+//     southLat: v.number(),
+//     westLng: v.number(),
+//     eastLng: v.number(),
+//   },
+//   handler: async (ctx, args) => {
+//     const { northLat, southLat, westLng, eastLng } = args;
 
-    // 获取所有设备
-    const devices = await ctx.db.query("devices").collect();
+//     // 获取所有设备
+//     const devices = await ctx.db.query("devices").collect();
 
-    // 筛选出在指定区域内的设备
-    const regionDeviceIds = devices
-      .filter((device) => {
-        const lat = device.location.latitude;
-        const lng = device.location.longitude;
-        return (
-          lat <= northLat && lat >= southLat && lng >= westLng && lng <= eastLng
-        );
-      })
-      .map((device) => device._id);
+//     // 筛选出在指定区域内的设备
+//     const regionDeviceIds = devices
+//       .filter((device) => {
+//         const lat = device.location.latitude;
+//         const lng = device.location.longitude;
+//         return (
+//           lat <= northLat && lat >= southLat && lng >= westLng && lng <= eastLng
+//         );
+//       })
+//       .map((device) => device._id);
 
-    if (regionDeviceIds.length === 0) return [];
+//     if (regionDeviceIds.length === 0) return [];
 
-    // 获取这些设备的最新数据
-    const latestData = [];
+//     // 获取这些设备的最新数据
+//     const latestData = [];
 
-    for (const deviceId of regionDeviceIds) {
-      const deviceData = await ctx.db
-        .query("oceanElements")
-        .filter((q) => q.eq(q.field("deviceId"), deviceId))
-        .order("desc")
-        .first();
+//     for (const deviceId of regionDeviceIds) {
+//       const deviceData = await ctx.db
+//         .query("oceanElements")
+//         .filter((q) => q.eq(q.field("deviceId"), deviceId))
+//         .order("desc")
+//         .first();
 
-      if (deviceData) {
-        latestData.push(deviceData);
-      }
-    }
+//       if (deviceData) {
+//         latestData.push(deviceData);
+//       }
+//     }
 
-    return latestData;
-  },
-});
+//     return latestData;
+//   },
+// });
 
 // 新增：导出数据
 export const prepareDataExport = query({
@@ -434,8 +434,6 @@ export const detectAnomalies = mutation({
       "temperature",
       "salinity",
       "dissolvedOxygen",
-      "pH",
-      "turbidity",
     ];
 
     // 对每个设备的数据进行分析

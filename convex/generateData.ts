@@ -1,6 +1,7 @@
 import { mutation, action } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { Doc } from "./_generated/dataModel";
 
 // 生成单条模拟数据
 export const generateSingleDataPoint = mutation({
@@ -389,3 +390,55 @@ export const createSampleDevices = mutation({
     };
   },
 });
+
+// 为设备生成简单的传感器数据
+export async function generateSensorData(
+  device: Doc<"devices">,
+  timestamp: number
+) {
+  const hour = new Date(timestamp).getHours();
+  const dayOfYear = Math.floor(
+    (timestamp - new Date(new Date().getFullYear(), 0, 0).getTime()) /
+      (1000 * 60 * 60 * 24)
+  );
+
+  // 温度: 季节变化 + 日变化 + 随机波动
+  const temperature =
+    15 +
+    8 * Math.sin((dayOfYear / 365) * 2 * Math.PI - Math.PI / 2) +
+    1.5 * Math.sin((hour / 24) * 2 * Math.PI - Math.PI / 2) +
+    (Math.random() - 0.5) * 0.8;
+
+  // 盐度: 基于纬度的变化 + 小随机波动
+  const salinity =
+    35 - 0.1 * (device.location.latitude - 45) + (Math.random() - 0.5) * 0.6;
+
+  // 流速: 小时变化 + 随机波动
+  const flowRate =
+    0.3 + 0.2 * Math.sin((hour / 12) * 2 * Math.PI) + Math.random() * 0.2;
+
+  // 溶解氧: 温度反相关 + 随机波动
+  const dissolvedOxygen =
+    8 - 0.1 * (temperature - 15) + (Math.random() - 0.5) * 0.6;
+
+  // pH: 小波动
+  const pH = 8.1 + (Math.random() - 0.5) * 0.3;
+
+  // 浊度: 流速相关 + 随机波动
+  const turbidity = 2 + flowRate * 0.5 + Math.random() * 1.5;
+
+  return {
+    temperature,
+    salinity,
+    flowRate,
+    dissolvedOxygen,
+    pH,
+    turbidity,
+    location: {
+      latitude: device.location.latitude + (Math.random() - 0.5) * 0.001,
+      longitude: device.location.longitude + (Math.random() - 0.5) * 0.001,
+      depth: device.location.depth,
+    },
+    status: "normal", // 默认正常状态
+  };
+}

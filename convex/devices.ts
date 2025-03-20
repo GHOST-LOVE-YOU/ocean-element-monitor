@@ -59,10 +59,15 @@ export const updateStatus = mutation({
       throw new Error("设备不存在");
     }
 
-    const updateData = {
+    const updateData: {
+      status: string;
+      lastActive: number;
+      batteryLevel?: number;
+    } = {
       status,
       lastActive: Date.now(),
     };
+
     if (batteryLevel !== undefined) {
       updateData.batteryLevel = batteryLevel;
     }
@@ -125,6 +130,9 @@ export const getDeviceHealth = query({
     const healthData = [];
 
     for (const device of devices) {
+      // 确保设备对象存在
+      if (!device) continue;
+
       // 检查最后活动时间
       const lastActiveAge = now - device.lastActive;
       const activeStatus =
@@ -212,132 +220,132 @@ export const getDeviceHealth = query({
   },
 });
 
-// 新增：获取设备数据覆盖率
-export const getDataCoverage = query({
-  args: {
-    deviceId: v.id("devices"),
-    days: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const { deviceId, days } = args;
+// // 新增：获取设备数据覆盖率
+// export const getDataCoverage = query({
+//   args: {
+//     deviceId: v.id("devices"),
+//     days: v.number(),
+//   },
+//   handler: async (ctx, args) => {
+//     const { deviceId, days } = args;
 
-    const device = await ctx.db.get(deviceId);
-    if (!device) {
-      throw new Error(`设备未找到: ${deviceId}`);
-    }
+//     const device = await ctx.db.get(deviceId);
+//     if (!device) {
+//       throw new Error(`设备未找到: ${deviceId}`);
+//     }
 
-    const now = Date.now();
-    const startTime = now - days * 24 * 60 * 60 * 1000;
+//     const now = Date.now();
+//     const startTime = now - days * 24 * 60 * 60 * 1000;
 
-    // 获取预期的数据点数量(根据设备配置)
-    const expectedPointsPerDay = (24 * 60) / device.config.sampleRate;
-    const totalExpectedPoints = expectedPointsPerDay * days;
+//     // 获取预期的数据点数量(根据设备配置)
+//     const expectedPointsPerDay = (24 * 60) / device.config.sampleRate;
+//     const totalExpectedPoints = expectedPointsPerDay * days;
 
-    // 获取实际收集的数据点
-    const actualData = await ctx.db
-      .query("oceanElements")
-      .filter(
-        (q) =>
-          q.eq(q.field("deviceId"), deviceId) &&
-          q.gte(q.field("timestamp"), startTime)
-      )
-      .collect();
+//     // 获取实际收集的数据点
+//     const actualData = await ctx.db
+//       .query("oceanElements")
+//       .filter(
+//         (q) =>
+//           q.eq(q.field("deviceId"), deviceId) &&
+//           q.gte(q.field("timestamp"), startTime)
+//       )
+//       .collect();
 
-    // 计算每个参数的覆盖率
-    const parameters = device.config.parameters;
-    const parameterCoverage = {};
+//     // 计算每个参数的覆盖率
+//     const parameters = device.config.parameters;
+//     const parameterCoverage = {};
 
-    parameters.forEach((param) => {
-      const dataWithParam = actualData.filter(
-        (item) => item[param] !== undefined && item[param] !== null
-      );
+//     parameters.forEach((param) => {
+//       const dataWithParam = actualData.filter(
+//         (item) => item[param] !== undefined && item[param] !== null
+//       );
 
-      parameterCoverage[param] = {
-        expected: totalExpectedPoints,
-        actual: dataWithParam.length,
-        coverage: (dataWithParam.length / totalExpectedPoints) * 100,
-      };
-    });
+//       parameterCoverage[param] = {
+//         expected: totalExpectedPoints,
+//         actual: dataWithParam.length,
+//         coverage: (dataWithParam.length / totalExpectedPoints) * 100,
+//       };
+//     });
 
-    // 计算时间段覆盖率
-    const timeSlots = [];
-    const slotSize = 24 / Math.min(24, days); // 每天最多24个时间段
+//     // 计算时间段覆盖率
+//     const timeSlots = [];
+//     const slotSize = 24 / Math.min(24, days); // 每天最多24个时间段
 
-    for (let day = 0; day < days; day++) {
-      for (let slot = 0; slot < slotSize; slot++) {
-        const slotStart =
-          startTime +
-          day * 24 * 60 * 60 * 1000 +
-          slot * (24 / slotSize) * 60 * 60 * 1000;
-        const slotEnd = slotStart + (24 / slotSize) * 60 * 60 * 1000;
+//     for (let day = 0; day < days; day++) {
+//       for (let slot = 0; slot < slotSize; slot++) {
+//         const slotStart =
+//           startTime +
+//           day * 24 * 60 * 60 * 1000 +
+//           slot * (24 / slotSize) * 60 * 60 * 1000;
+//         const slotEnd = slotStart + (24 / slotSize) * 60 * 60 * 1000;
 
-        const slotData = actualData.filter(
-          (item) => item.timestamp >= slotStart && item.timestamp < slotEnd
-        );
+//         const slotData = actualData.filter(
+//           (item) => item.timestamp >= slotStart && item.timestamp < slotEnd
+//         );
 
-        timeSlots.push({
-          start: slotStart,
-          end: slotEnd,
-          expected: expectedPointsPerDay / slotSize,
-          actual: slotData.length,
-          coverage: (slotData.length / (expectedPointsPerDay / slotSize)) * 100,
-        });
-      }
-    }
+//         timeSlots.push({
+//           start: slotStart,
+//           end: slotEnd,
+//           expected: expectedPointsPerDay / slotSize,
+//           actual: slotData.length,
+//           coverage: (slotData.length / (expectedPointsPerDay / slotSize)) * 100,
+//         });
+//       }
+//     }
 
-    return {
-      deviceId,
-      deviceName: device.name,
-      days,
-      totalExpected: totalExpectedPoints,
-      totalActual: actualData.length,
-      overallCoverage: (actualData.length / totalExpectedPoints) * 100,
-      parameterCoverage,
-      timeSlots,
-    };
-  },
-});
+//     return {
+//       deviceId,
+//       deviceName: device.name,
+//       days,
+//       totalExpected: totalExpectedPoints,
+//       totalActual: actualData.length,
+//       overallCoverage: (actualData.length / totalExpectedPoints) * 100,
+//       parameterCoverage,
+//       timeSlots,
+//     };
+//   },
+// });
 
-// 新增：获取设备分组统计
-export const getDeviceStats = query({
-  args: {},
-  handler: async (ctx) => {
-    const devices = await ctx.db.query("devices").collect();
+// // 新增：获取设备分组统计
+// export const getDeviceStats = query({
+//   args: {},
+//   handler: async (ctx) => {
+//     const devices = await ctx.db.query("devices").collect();
 
-    if (devices.length === 0) {
-      return {
-        total: 0,
-        byType: {},
-        byStatus: {},
-      };
-    }
+//     if (devices.length === 0) {
+//       return {
+//         total: 0,
+//         byType: {},
+//         byStatus: {},
+//       };
+//     }
 
-    // 按类型统计
-    const byType = {};
-    // 按状态统计
-    const byStatus = {};
+//     // 按类型统计
+//     const byType = {};
+//     // 按状态统计
+//     const byStatus = {};
 
-    devices.forEach((device) => {
-      // 统计类型
-      if (!byType[device.type]) {
-        byType[device.type] = 0;
-      }
-      byType[device.type]++;
+//     devices.forEach((device) => {
+//       // 统计类型
+//       if (!byType[device.type]) {
+//         byType[device.type] = 0;
+//       }
+//       byType[device.type]++;
 
-      // 统计状态
-      if (!byStatus[device.status]) {
-        byStatus[device.status] = 0;
-      }
-      byStatus[device.status]++;
-    });
+//       // 统计状态
+//       if (!byStatus[device.status]) {
+//         byStatus[device.status] = 0;
+//       }
+//       byStatus[device.status]++;
+//     });
 
-    return {
-      total: devices.length,
-      byType,
-      byStatus,
-    };
-  },
-});
+//     return {
+//       total: devices.length,
+//       byType,
+//       byStatus,
+//     };
+//   },
+// });
 
 // 删除设备及其关联数据
 export const deleteDevice = mutation({
@@ -381,6 +389,43 @@ export const deleteDevice = mutation({
       message: `设备 ${device.name} 及其所有关联数据已成功删除`,
       deletedElements: oceanElementsToDelete.length,
       deletedAlerts: alertsToDelete.length,
+    };
+  },
+});
+
+// 更新设备信息
+export const updateDevice = mutation({
+  args: {
+    id: v.id("devices"),
+    name: v.string(),
+    type: v.string(),
+    location: v.object({
+      latitude: v.number(),
+      longitude: v.number(),
+      description: v.optional(v.string()),
+    }),
+    config: v.object({
+      sampleRate: v.number(),
+      uploadInterval: v.number(),
+      parameters: v.array(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...updateData } = args;
+
+    // 获取设备信息，确认设备存在
+    const device = await ctx.db.get(id);
+    if (!device) {
+      throw new Error("设备不存在");
+    }
+
+    // 更新设备信息
+    await ctx.db.patch(id, updateData);
+
+    return {
+      success: true,
+      message: `设备 ${updateData.name} 已成功更新`,
+      deviceId: id,
     };
   },
 });
