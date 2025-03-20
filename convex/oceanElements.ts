@@ -430,11 +430,7 @@ export const detectAnomalies = mutation({
     });
 
     const anomalies: any[] = [];
-    const parameters = [
-      "temperature",
-      "salinity",
-      "dissolvedOxygen",
-    ];
+    const parameters = ["temperature", "salinity", "dissolvedOxygen"];
 
     // 对每个设备的数据进行分析
     for (const deviceId in deviceGroups) {
@@ -786,3 +782,167 @@ export const getProcessedChartData = query({
     }
   },
 });
+
+// 新增：获取参数趋势预测数据
+export const getPredictedTrends = query({
+  args: {
+    parameter: v.string(),
+    days: v.number(),
+    predictionDays: v.optional(v.number()),
+    deviceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { parameter, days, deviceId } = args;
+    const predictionDays = args.predictionDays || 3; // 默认预测未来3天
+    const now = Date.now();
+    const startTime = now - days * 24 * 60 * 60 * 1000;
+
+    // 获取指定时间范围内的数据
+    let dataQuery = ctx.db
+      .query("oceanElements")
+      .filter((q) => q.gte(q.field("timestamp"), startTime));
+
+    if (deviceId) {
+      dataQuery = dataQuery.filter((q) => q.eq(q.field("deviceId"), deviceId));
+    }
+
+    const data = await dataQuery.collect();
+
+    // 按设备分组数据
+    const deviceGroups: Record<string, any[]> = {};
+    data.forEach((item) => {
+      if (item[parameter] === undefined || item[parameter] === null) return;
+
+      if (!deviceGroups[item.deviceId]) {
+        deviceGroups[item.deviceId] = [];
+      }
+      deviceGroups[item.deviceId].push(item);
+    });
+
+    // 生成预测数据
+    const predictions: any[] = [];
+    const hourInterval = 3; // 每3小时一个数据点
+
+    // 对每个设备生成预测
+    for (const deviceId in deviceGroups) {
+      const deviceData = deviceGroups[deviceId].sort(
+        (a, b) => a.timestamp - b.timestamp
+      );
+
+      if (deviceData.length < 24) continue; // 需要足够的历史数据来生成预测
+
+      // 分析最近的数据趋势
+      const recentData = deviceData.slice(-96); // 取最近96个数据点（假设每小时1个点，相当于4天）
+
+      // 计算参数的平均值和变化率
+      const values = recentData.map((item) => item[parameter]);
+      const avgValue =
+        values.reduce((sum, val) => sum + val, 0) / values.length;
+
+      // 简单线性回归分析趋势
+      const x = Array.from({ length: recentData.length }, (_, i) => i);
+      const y = values;
+      const sumX = x.reduce((a, b) => a + b, 0);
+      const sumY = y.reduce((a, b) => a + b, 0);
+      const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+      const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
+
+      const slope =
+        (recentData.length * sumXY - sumX * sumY) /
+        (recentData.length * sumXX - sumX * sumX);
+      const intercept = (sumY - slope * sumX) / recentData.length;
+
+      // 考虑季节性模式
+      const hourPatterns: Record<number, number[]> = {};
+      recentData.forEach((item) => {
+        const hour = new Date(item.timestamp).getHours();
+        if (!hourPatterns[hour]) hourPatterns[hour] = [];
+        hourPatterns[hour].push(item[parameter]);
+      });
+
+      const hourlyAverages: Record<number, number> = {};
+      for (const hour in hourPatterns) {
+        const hourValues = hourPatterns[hour];
+        hourlyAverages[hour] =
+          hourValues.reduce((sum, val) => sum + val, 0) / hourValues.length;
+      }
+
+      // 生成预测数据点
+      const lastTimestamp = deviceData[deviceData.length - 1].timestamp;
+      const lastValue = deviceData[deviceData.length - 1][parameter];
+
+      // 首先添加一个与最后真实数据点重合的预测点
+      predictions.push({
+        timestamp: lastTimestamp,
+        [parameter]: lastValue,
+        deviceId: deviceId,
+        isPrediction: true,
+      });
+
+      for (let hour = 1; hour <= predictionDays * 24; hour += hourInterval) {
+        const futureTimestamp = lastTimestamp + hour * 60 * 60 * 1000;
+        const futureHour = new Date(futureTimestamp).getHours();
+
+        // 基础预测值 = 线性趋势 + 小时模式影响 + 随机波动
+        let predictedValue = intercept + slope * (recentData.length + hour);
+
+        // 添加小时模式影响
+        if (hourlyAverages[futureHour]) {
+          const hourDeviation = hourlyAverages[futureHour] - avgValue;
+          predictedValue += hourDeviation * 0.7; // 降低小时模式的影响权重
+        }
+
+        // 加入少量随机波动，使预测看起来更自然
+        // 根据与最后真实值的时间距离逐渐增加随机波动
+        const timeWeight = Math.min(hour / (24 * predictionDays), 1);
+        const randomFactor = (Math.random() - 0.5) * 0.2 * timeWeight;
+        predictedValue += randomFactor;
+
+        // 确保预测值在合理范围内 (根据参数类型设置范围)
+        switch (parameter) {
+          case "temperature":
+            predictedValue = Math.max(5, Math.min(30, predictedValue));
+            break;
+          case "salinity":
+            predictedValue = Math.max(30, Math.min(40, predictedValue));
+            break;
+          case "dissolvedOxygen":
+            predictedValue = Math.max(4, Math.min(10, predictedValue));
+            break;
+          default:
+            // 对其他参数进行通用约束
+            const stdDev = calculateStdDev(values);
+            predictedValue = Math.max(
+              avgValue - 3 * stdDev,
+              Math.min(avgValue + 3 * stdDev, predictedValue)
+            );
+        }
+
+        // 应用平滑过渡：预测值会随时间逐渐从最后真实值过渡到预测值
+        const transitionWeight = Math.min(hour / 24, 1); // 在第一天内逐渐过渡
+        const smoothedValue =
+          lastValue * (1 - transitionWeight) +
+          predictedValue * transitionWeight;
+
+        predictions.push({
+          timestamp: futureTimestamp,
+          [parameter]: smoothedValue,
+          deviceId: deviceId,
+          isPrediction: true,
+        });
+      }
+    }
+
+    // 按时间排序
+    return predictions.sort((a, b) => a.timestamp - b.timestamp);
+  },
+});
+
+// 辅助函数：计算标准差
+function calculateStdDev(values: number[]): number {
+  const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+  const variance =
+    values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) /
+    values.length;
+  return Math.sqrt(variance);
+}

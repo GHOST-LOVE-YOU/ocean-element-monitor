@@ -20,8 +20,8 @@ const DEFAULT_ICON = L.icon({
 
 // 在线设备图标
 const ONLINE_ICON = L.icon({
-  iconUrl: "/marker-icon-green.png",
-  iconRetinaUrl: "/marker-icon-2x-green.png",
+  iconUrl: "/marker-icon.png",
+  iconRetinaUrl: "/marker-icon-2x.png",
   shadowUrl: "/marker-shadow.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],

@@ -7,8 +7,30 @@ import { useState, useEffect, useMemo } from "react";
 import {
   ChevronLeftIcon,
   ArrowDownTrayIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
+import AnomalyDetectionPanel from "@/components/AnomalyDetectionPanel";
+
+// Define an interface for the ocean element data
+interface OceanElementData {
+  _id: string;
+  timestamp: number;
+  deviceId: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    depth?: number;
+  };
+  temperature?: number;
+  salinity?: number;
+  dissolvedOxygen?: number;
+  pH?: number;
+  flowRate?: number;
+  turbidity?: number;
+  status?: string;
+  [key: string]: string | number | boolean | object | undefined; // For any other properties that might exist
+}
 
 export default function DataPage() {
   const [timeRange, setTimeRange] = useState({
@@ -64,6 +86,226 @@ export default function DataPage() {
   useEffect(() => {
     setPageIndex(0);
   }, [timeRange, selectedDeviceId, selectedParameter]);
+
+  const exportProcessedData = () => {
+    if (!filteredData || filteredData.length === 0) return;
+
+    // 处理数据中的异常值、噪声和缺失值
+    const processedData = [...filteredData] as OceanElementData[];
+
+    // 按设备和参数分组数据
+    const groupedByDevice: Record<string, OceanElementData[]> = {};
+    processedData.forEach((item) => {
+      if (!groupedByDevice[item.deviceId]) {
+        groupedByDevice[item.deviceId] = [];
+      }
+      groupedByDevice[item.deviceId].push(item);
+    });
+
+    // 对每个设备的数据进行处理
+    Object.keys(groupedByDevice).forEach((deviceId) => {
+      const deviceData = groupedByDevice[deviceId].sort(
+        (a: OceanElementData, b: OceanElementData) => a.timestamp - b.timestamp
+      );
+
+      // 要处理的参数列表
+      const parameters = [
+        "temperature",
+        "salinity",
+        "dissolvedOxygen",
+        "pH",
+        "flowRate",
+        "turbidity",
+      ];
+
+      // 对每个参数进行处理
+      parameters.forEach((param) => {
+        // 计算均值和标准差，用于异常值检测
+        const values = deviceData
+          .map(
+            (item: OceanElementData) =>
+              item[param as keyof OceanElementData] as number | undefined
+          )
+          .filter((val): val is number => val !== undefined && val !== null);
+
+        if (values.length < 3) return; // 数据点太少，无法处理
+
+        const mean =
+          values.reduce((sum: number, val: number) => sum + val, 0) /
+          values.length;
+        const variance =
+          values.reduce(
+            (sum: number, val: number) => sum + Math.pow(val - mean, 2),
+            0
+          ) / values.length;
+        const stdDev = Math.sqrt(variance);
+
+        // 处理异常值和缺失值
+        for (let i = 0; i < deviceData.length; i++) {
+          const item = deviceData[i];
+          const value = item[param as keyof OceanElementData] as
+            | number
+            | undefined;
+
+          // 处理异常值 (超过3个标准差视为异常)
+          if (value !== undefined && value !== null) {
+            if (Math.abs(value - mean) > 3 * stdDev) {
+              // 异常值替换为相邻值的平均值或均值
+              let replacement = mean;
+
+              // 尝试使用相邻值
+              const prevValue =
+                i > 0
+                  ? (deviceData[i - 1][param as keyof OceanElementData] as
+                      | number
+                      | undefined)
+                  : null;
+              const nextValue =
+                i < deviceData.length - 1
+                  ? (deviceData[i + 1][param as keyof OceanElementData] as
+                      | number
+                      | undefined)
+                  : null;
+
+              if (
+                prevValue !== undefined &&
+                prevValue !== null &&
+                nextValue !== undefined &&
+                nextValue !== null
+              ) {
+                replacement = (prevValue + nextValue) / 2;
+              } else if (prevValue !== undefined && prevValue !== null) {
+                replacement = prevValue;
+              } else if (nextValue !== undefined && nextValue !== null) {
+                replacement = nextValue;
+              }
+
+              item[param as keyof OceanElementData] = replacement;
+            }
+          }
+          // 处理缺失值
+          else if (value === undefined || value === null) {
+            // 使用线性插值填充缺失值
+            let replacement = mean; // 默认使用均值
+
+            // 尝试使用相邻值进行插值
+            const prevValue =
+              i > 0
+                ? (deviceData[i - 1][param as keyof OceanElementData] as
+                    | number
+                    | undefined)
+                : null;
+            const nextValue =
+              i < deviceData.length - 1
+                ? (deviceData[i + 1][param as keyof OceanElementData] as
+                    | number
+                    | undefined)
+                : null;
+
+            if (
+              prevValue !== undefined &&
+              prevValue !== null &&
+              nextValue !== undefined &&
+              nextValue !== null
+            ) {
+              replacement = (prevValue + nextValue) / 2;
+            } else if (prevValue !== undefined && prevValue !== null) {
+              replacement = prevValue;
+            } else if (nextValue !== undefined && nextValue !== null) {
+              replacement = nextValue;
+            }
+
+            item[param as keyof OceanElementData] = replacement;
+          }
+        }
+
+        // 应用移动平均去除噪声
+        const windowSize = 3;
+        if (deviceData.length >= windowSize) {
+          for (let i = 0; i < deviceData.length; i++) {
+            // 跳过边界情况
+            if (
+              i < Math.floor(windowSize / 2) ||
+              i >= deviceData.length - Math.floor(windowSize / 2)
+            )
+              continue;
+
+            // 计算移动平均
+            let sum = 0;
+            let count = 0;
+            for (
+              let j = i - Math.floor(windowSize / 2);
+              j <= i + Math.floor(windowSize / 2);
+              j++
+            ) {
+              const val = deviceData[j][param as keyof OceanElementData] as
+                | number
+                | undefined;
+              if (val !== undefined && val !== null) {
+                sum += val;
+                count++;
+              }
+            }
+
+            if (count > 0) {
+              // 应用一定程度的平滑
+              const currentValue = deviceData[i][
+                param as keyof OceanElementData
+              ] as number;
+              deviceData[i][param as keyof OceanElementData] =
+                currentValue * 0.7 + (sum / count) * 0.3;
+            }
+          }
+        }
+      });
+    });
+
+    // 创建CSV
+    const allKeys = new Set();
+    processedData.forEach((item) => {
+      Object.keys(item).forEach((key) => {
+        if (key !== "_id" && key !== "status" && !key.startsWith("_")) {
+          allKeys.add(key);
+        }
+      });
+    });
+
+    allKeys.delete("location");
+    allKeys.add("latitude");
+    allKeys.add("longitude");
+    allKeys.add("depth");
+
+    const keys = Array.from(allKeys) as string[];
+
+    let csvContent = keys.join(",") + "\n";
+
+    processedData.forEach((item) => {
+      const row = keys.map((key) => {
+        if (key === "latitude") return item.location?.latitude ?? "";
+        if (key === "longitude") return item.location?.longitude ?? "";
+        if (key === "depth") return item.location?.depth ?? "";
+        if (key === "timestamp")
+          return new Date(
+            item[key as keyof typeof item] as number
+          ).toISOString();
+        return (item[key as keyof typeof item] ?? "").toString();
+      });
+
+      csvContent += row.join(",") + "\n";
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `processed-ocean-data-${format(new Date(), "yyyy-MM-dd")}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const exportToCSV = () => {
     if (!filteredData || filteredData.length === 0) return;
@@ -160,14 +402,24 @@ export default function DataPage() {
             <p className="text-gray-500">浏览和导出海洋要素历史监测数据</p>
           </div>
 
-          <button
-            onClick={exportToCSV}
-            disabled={!filteredData || filteredData.length === 0}
-            className="flex items-center mt-4 md:mt-0 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
-            导出数据
-          </button>
+          <div className="flex space-x-2 mt-4 md:mt-0">
+            <button
+              onClick={exportProcessedData}
+              disabled={!filteredData || filteredData.length === 0}
+              className="flex items-center bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              <SparklesIcon className="h-4 w-4 mr-1" />
+              导出处理后数据
+            </button>
+            <button
+              onClick={exportToCSV}
+              disabled={!filteredData || filteredData.length === 0}
+              className="flex items-center bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+              导出原始数据
+            </button>
+          </div>
         </div>
       </div>
 
@@ -238,6 +490,10 @@ export default function DataPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <AnomalyDetectionPanel />
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border overflow-hidden">

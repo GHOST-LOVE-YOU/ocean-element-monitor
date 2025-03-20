@@ -44,6 +44,10 @@ const elementConfig = {
     maxBgColor: "rgba(255, 99, 132, 0.5)",
     minColor: "rgb(75, 192, 192)",
     minBgColor: "rgba(75, 192, 192, 0.5)",
+    predictionColor: "rgb(255, 159, 64)",
+    predictionBgColor: "rgba(255, 159, 64, 0.5)",
+    yAxisMin: 5,
+    yAxisMax: 30,
   },
   salinity: {
     title: "海水盐度",
@@ -55,6 +59,10 @@ const elementConfig = {
     maxBgColor: "rgba(255, 159, 64, 0.5)",
     minColor: "rgb(54, 162, 235)",
     minBgColor: "rgba(54, 162, 235, 0.5)",
+    predictionColor: "rgb(153, 102, 255)",
+    predictionBgColor: "rgba(153, 102, 255, 0.5)",
+    yAxisMin: 34,
+    yAxisMax: 36,
   },
   dissolvedOxygen: {
     title: "溶解氧",
@@ -66,6 +74,10 @@ const elementConfig = {
     maxBgColor: "rgba(255, 99, 132, 0.5)",
     minColor: "rgb(75, 192, 192)",
     minBgColor: "rgba(75, 192, 192, 0.5)",
+    predictionColor: "rgb(255, 159, 64)",
+    predictionBgColor: "rgba(255, 159, 64, 0.5)",
+    yAxisMin: 4,
+    yAxisMax: 10,
   },
 };
 
@@ -108,7 +120,7 @@ export default function OceanElementDetailPage({
       endTime,
     },
     {
-      refreshKey: dataFetchKey, // 使用refreshKey来强制重新获取数据
+      refetchKey: dataFetchKey, // 使用refetchKey来强制重新获取数据
     }
   );
 
@@ -119,7 +131,20 @@ export default function OceanElementDetailPage({
       days: timeRange.days,
     },
     {
-      refreshKey: dataFetchKey, // 使用refreshKey来强制重新获取数据
+      refetchKey: dataFetchKey, // 使用refetchKey来强制重新获取数据
+    }
+  );
+
+  // 获取预测数据
+  const predictedData = useQuery(
+    api.oceanElements.getPredictedTrends,
+    {
+      parameter: elementType,
+      days: timeRange.days,
+      predictionDays: 2, // 预测未来2天
+    },
+    {
+      refetchKey: dataFetchKey,
     }
   );
 
@@ -130,7 +155,7 @@ export default function OceanElementDetailPage({
       timeRange: { start: startTime, end: endTime },
     },
     {
-      refreshKey: dataFetchKey, // 使用refreshKey来强制重新获取数据
+      refetchKey: dataFetchKey, // 使用refetchKey来强制重新获取数据
     }
   );
 
@@ -177,66 +202,137 @@ export default function OceanElementDetailPage({
         });
       });
 
+      // 添加预测数据
+      if (predictedData && predictedData.length > 0) {
+        // 为每个设备添加预测数据
+        predictedData.forEach((item) => {
+          if (!item[elementType] || !deviceMap.has(item.deviceId)) return;
+
+          // 如果该设备还没有预测数据集，创建一个新的
+          if (!deviceMap.has(`${item.deviceId}-prediction`)) {
+            deviceMap.set(`${item.deviceId}-prediction`, {
+              label: `设备 ${item.deviceId.substring(0, 8)} 预测`,
+              data: [],
+              borderColor: getRandomColor(item.deviceId),
+              backgroundColor: getRandomColor(item.deviceId, 0.3),
+              tension: 0.6,
+              borderWidth: 2,
+              borderDash: [5, 5], // 虚线表示预测数据
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              fill: false,
+              spanGaps: true,
+            });
+          }
+
+          deviceMap.get(`${item.deviceId}-prediction`).data.push({
+            x: item.timestamp,
+            y: item[elementType],
+          });
+        });
+      }
+
       return {
         datasets: Array.from(deviceMap.values()),
       };
     }
     // 尝试使用小时趋势数据作为备选
     else if (hourlyTrends && hourlyTrends.length > 0) {
-      return {
-        datasets: [
-          {
-            label: `平均${config.title}`,
-            data: hourlyTrends.map((item) => ({
-              x: item.timestamp,
-              y: item.average,
-            })),
-            borderColor: config.chartColor,
-            backgroundColor: config.chartBgColor,
-            fill: {
-              target: "origin",
-              above: config.chartBgColor,
-            },
-            tension: 0.6, // 更光滑的曲线
-            borderWidth: 3,
-            pointRadius: 0,
-            pointHoverRadius: 5,
-            spanGaps: true,
+      const datasets = [
+        {
+          label: `平均${config.title}`,
+          data: hourlyTrends.map((item) => ({
+            x: item.timestamp,
+            y: item.average,
+          })),
+          borderColor: config.chartColor,
+          backgroundColor: config.chartBgColor,
+          fill: {
+            target: "origin",
+            above: config.chartBgColor,
           },
-          {
-            label: `最高${config.title}`,
-            data: hourlyTrends.map((item) => ({
-              x: item.timestamp,
-              y: item.max,
-            })),
-            borderColor: config.maxColor,
-            backgroundColor: config.maxBgColor,
-            borderDash: [5, 5],
-            borderWidth: 2,
-            tension: 0.6, // 更光滑的曲线
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            fill: false,
-            spanGaps: true,
-          },
-          {
-            label: `最低${config.title}`,
-            data: hourlyTrends.map((item) => ({
-              x: item.timestamp,
-              y: item.min,
-            })),
-            borderColor: config.minColor,
-            backgroundColor: config.minBgColor,
-            borderDash: [5, 5],
-            borderWidth: 2,
-            tension: 0.6, // 更光滑的曲线
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            fill: false,
-            spanGaps: true,
-          },
-        ],
-      };
+          tension: 0.6, // 更光滑的曲线
+          borderWidth: 3,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          spanGaps: true,
+        },
+        {
+          label: `最高${config.title}`,
+          data: hourlyTrends.map((item) => ({
+            x: item.timestamp,
+            y: item.max,
+          })),
+          borderColor: config.maxColor,
+          backgroundColor: config.maxBgColor,
+          borderDash: [5, 5],
+          borderWidth: 2,
+          tension: 0.6, // 更光滑的曲线
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          fill: false,
+          spanGaps: true,
+        },
+        {
+          label: `最低${config.title}`,
+          data: hourlyTrends.map((item) => ({
+            x: item.timestamp,
+            y: item.min,
+          })),
+          borderColor: config.minColor,
+          backgroundColor: config.minBgColor,
+          borderDash: [5, 5],
+          borderWidth: 2,
+          tension: 0.6, // 更光滑的曲线
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          fill: false,
+          spanGaps: true,
+        },
+      ];
+
+      // 添加预测数据
+      if (predictedData && predictedData.length > 0) {
+        // 为了简化，我们在趋势数据中只添加一个预测线，取所有设备的平均值
+        const predictionsByHour = new Map<number, number[]>();
+
+        predictedData.forEach((item) => {
+          const hour =
+            Math.floor(item.timestamp / (60 * 60 * 1000)) * (60 * 60 * 1000);
+          if (!predictionsByHour.has(hour)) {
+            predictionsByHour.set(hour, []);
+          }
+          predictionsByHour.get(hour)?.push(item[elementType]);
+        });
+
+        const predictionTrend = Array.from(predictionsByHour.entries()).map(
+          ([timestamp, values]) => ({
+            timestamp,
+            average:
+              values.reduce((sum: number, value: number) => sum + value, 0) /
+              values.length,
+          })
+        );
+
+        datasets.push({
+          label: `预测${config.title}趋势`,
+          data: predictionTrend.map((item) => ({
+            x: item.timestamp,
+            y: item.average,
+          })),
+          borderColor: config.predictionColor,
+          backgroundColor: config.predictionBgColor,
+          borderDash: [5, 5],
+          borderWidth: 2,
+          tension: 0.6,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          fill: false,
+          spanGaps: true,
+        });
+      }
+
+      return { datasets };
     }
 
     // 如果没有数据，返回null
@@ -290,7 +386,7 @@ export default function OceanElementDetailPage({
         cornerRadius: 8,
         usePointStyle: true,
         callbacks: {
-          title: function (context: any) {
+          title: function (context: { parsed: { x: number } }[]) {
             const date = new Date(context[0].parsed.x);
             return date.toLocaleString("zh-CN");
           },
@@ -303,10 +399,10 @@ export default function OceanElementDetailPage({
         time: {
           unit:
             timeRange.days === 1
-              ? "hour"
+              ? ("hour" as const)
               : timeRange.days === 7
-                ? "day"
-                : "week",
+                ? ("day" as const)
+                : ("week" as const),
           tooltipFormat: "yyyy-MM-dd HH:mm",
           displayFormats: {
             hour: "HH:mm",
@@ -328,7 +424,7 @@ export default function OceanElementDetailPage({
           },
           font: {
             size: 13,
-            weight: "bold",
+            weight: "bold" as const,
           },
         },
         grid: {
@@ -355,7 +451,7 @@ export default function OceanElementDetailPage({
           },
           font: {
             size: 13,
-            weight: "bold",
+            weight: "bold" as const,
           },
         },
         beginAtZero: false,
@@ -391,7 +487,7 @@ export default function OceanElementDetailPage({
     },
     animation: {
       duration: 1000,
-      easing: "easeOutQuart",
+      easing: "easeOutQuart" as const,
     },
   };
 
@@ -588,7 +684,7 @@ export default function OceanElementDetailPage({
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         {latestValue !== null
-                          ? `${latestValue.toFixed(1)} ${config.unit}`
+                          ? `${latestValue?.toFixed(1)} ${config.unit}`
                           : "暂无数据"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
